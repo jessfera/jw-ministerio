@@ -1,64 +1,64 @@
 import * as XLSX from "xlsx";
-import { saveAs } from "file-saver";
 
-function getCongregationName(fallback = "Congregação Nova Paraguaçu") {
-  return (
-    (typeof import.meta !== "undefined" &&
-      import.meta.env &&
-      (import.meta.env.VITE_CONGREGACAO_NOME || import.meta.env.VITE_CONGREGACAO)) ||
-    fallback
+function safeNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function computeTotalsFromAllRows(allRowsByGroup = {}) {
+  const all = Object.values(allRowsByGroup).flat();
+  return all.reduce(
+    (acc, r) => {
+      acc.totalHorasPA += safeNum(r.horasPA);
+      acc.totalHorasPR += safeNum(r.horasPR);
+      acc.totalEstudos += safeNum(r.estudosBiblicos ?? r.estudos);
+      if (r.pioneiroAuxiliar || r.pAux) acc.qtdPA += 1;
+      if (r.pioneiroRegular || r.pReg) acc.qtdPR += 1;
+      acc.totalLinhas += 1;
+      return acc;
+    },
+    { totalHorasPA: 0, totalHorasPR: 0, totalEstudos: 0, qtdPA: 0, qtdPR: 0, totalLinhas: 0 }
   );
 }
 
 export function exportAdminMonthToExcel({ monthId, groups, allRowsByGroup, totals }) {
+  const safeTotals = totals || computeTotalsFromAllRows(allRowsByGroup);
+
   const wb = XLSX.utils.book_new();
 
-  const congregacao = getCongregationName();
+  // Aba Resumo
+  const resumo = [
+    ["Relatório ADMIN - Consolidação do mês"],
+    ["Mês", monthId],
+    [],
+    ["Horas PA (total)", safeTotals.totalHorasPA],
+    ["Horas PR (total)", safeTotals.totalHorasPR],
+    ["Estudos bíblicos (total)", safeTotals.totalEstudos],
+    ["P. Auxiliares (qtd)", safeTotals.qtdPA],
+    ["P. Regulares (qtd)", safeTotals.qtdPR],
+    ["Total de linhas", safeTotals.totalLinhas],
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumo), "Resumo");
 
-  // Aba Total (resumo geral)
-  const totalSheet = XLSX.utils.json_to_sheet([
-    { Indicador: "Congregação", Valor: congregacao },
-    { Indicador: "Mês", Valor: monthId },
-    { Indicador: "Total Horas PA", Valor: totals.totalHorasPA || 0 },
-    { Indicador: "Total Horas PR", Valor: totals.totalHorasPR || 0 },
-    { Indicador: "Total Estudos Bíblicos", Valor: totals.totalEstudos || 0 },
-    { Indicador: "Qtd Pioneiros Auxiliares", Valor: totals.qtdPA || 0 },
-    { Indicador: "Qtd Pioneiros Regulares", Valor: totals.qtdPR || 0 },
-    { Indicador: "Total Publicadores (linhas)", Valor: totals.totalLinhas || 0 },
-  ]);
-  XLSX.utils.book_append_sheet(wb, totalSheet, "Total");
-
-  // Uma aba por grupo com tabela completa
-  for (const g of groups) {
-    const rows = allRowsByGroup[g.id] || [];
-    const dataRows = rows
+  // Uma aba por grupo
+  for (const g of groups || []) {
+    const rows = (allRowsByGroup?.[g.id] || [])
       .slice()
       .sort((a, b) => (a.nome || "").localeCompare(b.nome || ""))
       .map((r) => ({
         "Componente do grupo": r.nome || "",
         "Participou no ministério": r.participou ? "Sim" : "Não",
-        "Pioneiro auxiliar": r.pioneiroAuxiliar ? "Sim" : "Não",
-        "Pioneiro regular": r.pioneiroRegular ? "Sim" : "Não",
-        "Estudos bíblicos": Number(r.estudosBiblicos || 0),
-        "Horas PA": Number(r.horasPA || 0),
-        "Horas PR": Number(r.horasPR || 0),
+        "Pioneiro auxiliar": (r.pioneiroAuxiliar || r.pAux) ? "Sim" : "Não",
+        "Pioneiro regular": (r.pioneiroRegular || r.pReg) ? "Sim" : "Não",
+        "Estudos bíblicos": safeNum(r.estudosBiblicos ?? r.estudos),
+        "Horas PA": safeNum(r.horasPA),
+        "Horas PR": safeNum(r.horasPR),
       }));
 
-    const ws = XLSX.utils.json_to_sheet(dataRows);
-
-    // Cabeçalho no topo da aba (fica acima da tabela)
-    XLSX.utils.sheet_add_aoa(
-      ws,
-      [[congregacao], [`Grupo ${g.numero ?? ""} — ${g.superintendenteNome ?? ""}`], [`Mês: ${monthId}`], []],
-      { origin: "A1" }
-    );
-
-    // Nome seguro da aba (máx 31 chars no Excel)
-    const sheetName = `G${String(g.numero || g.id).replace(/\D/g, "") || g.id}`.slice(0, 31);
+    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ "Componente do grupo": "(sem lançamentos)" }]);
+    const sheetName = `Grupo ${g.numero ?? g.id}`.slice(0, 31);
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
   }
 
-  const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-  const fileName = `Relatorio_ADMIN_${monthId}.xlsx`;
-  saveAs(new Blob([out], { type: "application/octet-stream" }), fileName);
+  XLSX.writeFile(wb, `Relatorio_ADMIN_${monthId}.xlsx`);
 }

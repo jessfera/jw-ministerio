@@ -10,7 +10,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "file-saver": "^2.0.5",
     "firebase": "^12.9.0",
     "jspdf": "^4.1.0",
     "jspdf-autotable": "^5.0.7",

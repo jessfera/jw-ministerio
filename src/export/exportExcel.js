@@ -1,52 +1,39 @@
 import * as XLSX from "xlsx";
-import { saveAs } from "file-saver";
 
-function getCongregationName(fallback = "Congregação Nova Paraguaçu") {
-  return (
-    (typeof import.meta !== "undefined" &&
-      import.meta.env &&
-      (import.meta.env.VITE_CONGREGACAO_NOME || import.meta.env.VITE_CONGREGACAO)) ||
-    fallback
-  );
+function safeNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 }
 
-export function exportGroupMonthToExcel({ groupLabel, monthId, rows, summary }) {
-  const congregationName = getCongregationName();
+export function exportGroupMonthToExcel({ monthId, group, rows, totals, congregationName }) {
+  const wb = XLSX.utils.book_new();
 
-  const dataRows = (rows || []).map((r) => ({
-    "Componente do grupo": r.nome || "",
-    "Participou no ministério": r.participou ? "Sim" : "Não",
-    "Pioneiro auxiliar": r.pioneiroAuxiliar ? "Sim" : "Não",
-    "Pioneiro regular": r.pioneiroRegular ? "Sim" : "Não",
-    "Estudos bíblicos": Number(r.estudosBiblicos || 0),
-    "Horas PA": Number(r.horasPA || 0),
-    "Horas PR": Number(r.horasPR || 0),
+  const resumo = [
+    [congregationName || "Congregação Nova Paraguaçu"],
+    ["Relatório do Ministério"],
+    ["Mês", monthId],
+    ["Grupo", group?.numero ?? "-"],
+    ["Superintendente", group?.superintendenteNome ?? "-"],
+    [],
+    ["Horas PA (total)", safeNum(totals?.horasPA)],
+    ["Horas PR (total)", safeNum(totals?.horasPR)],
+    ["Estudos bíblicos (total)", safeNum(totals?.estudos)],
+    ["P. Auxiliares (qtd)", safeNum(totals?.pAux)],
+    ["P. Regulares (qtd)", safeNum(totals?.pReg)],
+  ];
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumo), "Resumo");
+
+  const tabela = (rows || []).map((r) => ({
+    Nome: r.nome ?? "",
+    Participou: r.participou ? "Sim" : "Não",
+    "P. Aux": r.pioneiroAux ? "Sim" : "Não",
+    "P. Reg": r.pioneiroReg ? "Sim" : "Não",
+    Estudos: safeNum(r.estudos),
+    "Horas PA": safeNum(r.horasPA),
+    "Horas PR": safeNum(r.horasPR),
   }));
 
-  const ws1 = XLSX.utils.json_to_sheet(dataRows);
-  XLSX.utils.sheet_add_aoa(
-    ws1,
-    [[congregationName], [`Grupo: ${groupLabel}`], [`Mês: ${monthId}`], []],
-    { origin: "A1" }
-  );
-
-  const resumoRows = [
-    { Indicador: "Total Horas PA", Valor: Number(summary?.totalHorasPA || 0) },
-    { Indicador: "Total Horas PR", Valor: Number(summary?.totalHorasPR || 0) },
-    { Indicador: "Total Estudos Bíblicos", Valor: Number(summary?.totalEstudos || 0) },
-    { Indicador: "Qtd Pioneiros Auxiliares", Valor: Number(summary?.qtdPA || 0) },
-    { Indicador: "Qtd Pioneiros Regulares", Valor: Number(summary?.qtdPR || 0) },
-  ];
-  const ws2 = XLSX.utils.json_to_sheet(resumoRows);
-  XLSX.utils.sheet_add_aoa(ws2, [[congregationName], [`Grupo: ${groupLabel}`], [`Mês: ${monthId}`], []], {
-    origin: "A1",
-  });
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws1, "Relatorio");
-  XLSX.utils.book_append_sheet(wb, ws2, "Resumo");
-
-  const fileName = `Relatorio_${groupLabel}_${monthId}.xlsx`;
-  const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-  saveAs(new Blob([out], { type: "application/octet-stream" }), fileName);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(tabela), "Tabela");
+  XLSX.writeFile(wb, `Relatorio_${monthId}_Grupo_${group?.numero ?? ""}.xlsx`);
 }
