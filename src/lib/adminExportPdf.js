@@ -1,38 +1,81 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-export function exportAdminMonthToPdf({ monthLabel, groupsData }) {
-  const doc = new jsPDF({ orientation: "landscape" });
+function computeTotalsFromRows(rows = []) {
+  return rows.reduce(
+    (acc, r) => {
+      const estudos = Number(r.estudosBiblicos || 0) || 0;
+      const horasPA = Number(r.horasPA || 0) || 0;
+      const horasPR = Number(r.horasPR || 0) || 0;
+      acc.totalEstudos += estudos;
+      acc.totalHorasPA += horasPA;
+      acc.totalHorasPR += horasPR;
+      if (r.pioneiroAuxiliar) acc.qtdPA += 1;
+      if (r.pioneiroRegular) acc.qtdPR += 1;
+      return acc;
+    },
+    { totalHorasPA: 0, totalHorasPR: 0, totalEstudos: 0, qtdPA: 0, qtdPR: 0 }
+  );
+}
+
+function computeTotalsFromAll(allRowsByGroup = {}) {
+  const all = Object.values(allRowsByGroup).flat();
+  return computeTotalsFromRows(all);
+}
+
+export function exportAdminMonthToPdf({ monthId, groups, allRowsByGroup, totals }) {
+  const safeTotals = totals || computeTotalsFromAll(allRowsByGroup);
+  const doc = new jsPDF();
 
   doc.setFontSize(14);
-  doc.text(`Relatório do mês: ${monthLabel}`, 14, 14);
+  doc.text("Relatório ADMIN - Tabelas completas", 14, 16);
+  doc.setFontSize(11);
+  doc.text(`Mês: ${monthId}`, 14, 24);
 
-  // Consolidação (resumo geral)
-  const allRows = [];
-  for (const g of groupsData) {
-    for (const row of g.rows || []) {
-      allRows.push({ ...row, groupNumero: g.numero });
+  doc.text(
+    `Total: Horas PA=${safeTotals.totalHorasPA || 0} | Horas PR=${safeTotals.totalHorasPR || 0} | Estudos=${safeTotals.totalEstudos || 0} | PA=${safeTotals.qtdPA || 0} | PR=${safeTotals.qtdPR || 0}`,
+    14,
+    32
+  );
+
+  let startY = 40;
+
+  for (const g of groups) {
+    const rows = (allRowsByGroup[g.id] || [])
+      .slice()
+      .sort((a, b) => (a.nome || "").localeCompare(b.nome || ""));
+
+    const title = `Grupo ${g.numero ?? g.id} - ${g.superintendenteNome || ""}`.trim();
+
+    if (startY > 240) {
+      doc.addPage();
+      startY = 16;
     }
+
+    doc.setFontSize(12);
+    doc.text(title, 14, startY);
+    startY += 6;
+
+    const body = rows.map((r) => [
+      r.nome || "",
+      r.participou ? "Sim" : "Não",
+      r.pioneiroAuxiliar ? "Sim" : "Não",
+      r.pioneiroRegular ? "Sim" : "Não",
+      String(Number(r.estudosBiblicos || 0)),
+      String(Number(r.horasPA || 0)),
+      String(Number(r.horasPR || 0)),
+    ]);
+
+    autoTable(doc, {
+      startY,
+      head: [["Componente", "Participou", "P. Aux", "P. Reg", "Estudos", "Horas PA", "Horas PR"]],
+      body: body.length ? body : [["(sem lançamentos)", "", "", "", "", "", ""]],
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [30, 30, 30] },
+    });
+
+    startY = doc.lastAutoTable.finalY + 12;
   }
 
-  // Tabela completa consolidada
-  autoTable(doc, {
-    startY: 22,
-    head: [[
-      "Grupo", "Nome", "Participou", "P. Aux", "P. Reg", "Estudos", "Horas PA", "Horas PR"
-    ]],
-    body: allRows.map(r => ([
-      String(r.groupNumero ?? ""),
-      r.nome ?? "",
-      r.participou ? "Sim" : "Não",
-      r.pAux ? "Sim" : "Não",
-      r.pReg ? "Sim" : "Não",
-      String(r.estudos ?? 0),
-      String(r.horasPA ?? 0),
-      String(r.horasPR ?? 0),
-    ])),
-    styles: { fontSize: 9 },
-  });
-
-  doc.save(`admin-relatorio-${monthLabel}.pdf`);
+  doc.save(`Relatorio_ADMIN_${monthId}.pdf`);
 }
