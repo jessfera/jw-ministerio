@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   collection,
-  doc,
   getDocs,
   onSnapshot,
+  doc,
   writeBatch,
 } from "firebase/firestore";
 import { db } from "../firebase";
@@ -12,8 +12,13 @@ import MonthPicker from "../components/MonthPicker";
 import SummaryCard from "../components/SummaryCard";
 import { calcSummary } from "../lib/summary";
 import { monthIdFromDate } from "../lib/month";
+
+// Exportações (Admin)
 import { exportAdminMonthToExcel } from "../lib/adminExportExcel";
 import { exportAdminMonthToPdf } from "../lib/adminExportPdf";
+// Exportações (Grupo)
+import { exportGroupMonthToPdf } from "../lib/exportPdf";
+import { exportGroupMonthToExcel } from "../lib/exportExcel";
 
 export default function AdminDashboard() {
   const { logout } = useAuth();
@@ -86,86 +91,116 @@ export default function AdminDashboard() {
     run();
   }, [groups, monthId, statuses]); // recalcula quando status muda (ou mês)
 
-  async function loadAllRowsByGroup(groupList = groups) {
-    const allRowsByGroup = {};
-    for (const g of groupList) {
+  const selectedGroup = useMemo(
+    () => groups.find((g) => g.id === selectedGroupId) || null,
+    [groups, selectedGroupId]
+  );
+
+  async function fetchAllRowsByGroup() {
+    const out = {};
+    for (const g of groups) {
       const snap = await getDocs(
         collection(db, "groups", g.id, "reports", monthId, "publicadores")
       );
-      allRowsByGroup[g.id] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      out[g.id] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     }
-    return allRowsByGroup;
+    return out;
   }
 
-  async function handleExportMonthPdf() {
-    const allRowsByGroup = await loadAllRowsByGroup(groups);
-    exportAdminMonthToPdf({ monthId, groups, statuses, allRowsByGroup });
+  async function onExportMonthPdf() {
+    try {
+      const rowsByGroup = await fetchAllRowsByGroup();
+      await exportAdminMonthToPdf({
+        monthId,
+        congregationName: "Congregação Nova Paraguaçu",
+        groups,
+        statuses,
+        rowsByGroup,
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Falha ao gerar PDF do mês. Veja o console para detalhes.");
+    }
   }
 
-  async function handleExportMonthExcel() {
-    const allRowsByGroup = await loadAllRowsByGroup(groups);
-    exportAdminMonthToExcel({ monthId, groups, statuses, allRowsByGroup });
+  async function onExportMonthExcel() {
+    try {
+      const rowsByGroup = await fetchAllRowsByGroup();
+      await exportAdminMonthToExcel({
+        monthId,
+        congregationName: "Congregação Nova Paraguaçu",
+        groups,
+        statuses,
+        rowsByGroup,
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Falha ao gerar Excel do mês. Veja o console para detalhes.");
+    }
   }
 
-  async function handleExportGroupPdf() {
-    const g = groups.find((x) => x.id === selectedGroupId);
-    if (!g) return;
-    const groupList = [g];
-    const allRowsByGroup = await loadAllRowsByGroup(groupList);
-    exportAdminMonthToPdf({
-      monthId,
-      groups: groupList,
-      statuses: { [g.id]: statuses[g.id] || "rascunho" },
-      allRowsByGroup,
-    });
+  async function onExportSelectedGroupPdf() {
+    if (!selectedGroupId || !selectedGroup) return;
+    try {
+      await exportGroupMonthToPdf({
+        monthId,
+        congregationName: "Congregação Nova Paraguaçu",
+        group: {
+          id: selectedGroupId,
+          numero: selectedGroup.numero,
+          superintendenteNome: selectedGroup.superintendenteNome,
+        },
+        rows: selectedRows,
+        status: statuses[selectedGroupId] || "rascunho",
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Falha ao gerar PDF do grupo. Veja o console para detalhes.");
+    }
   }
 
-  async function handleExportGroupExcel() {
-    const g = groups.find((x) => x.id === selectedGroupId);
-    if (!g) return;
-    const groupList = [g];
-    const allRowsByGroup = await loadAllRowsByGroup(groupList);
-    exportAdminMonthToExcel({
-      monthId,
-      groups: groupList,
-      statuses: { [g.id]: statuses[g.id] || "rascunho" },
-      allRowsByGroup,
-    });
+  async function onExportSelectedGroupExcel() {
+    if (!selectedGroupId || !selectedGroup) return;
+    try {
+      await exportGroupMonthToExcel({
+        monthId,
+        congregationName: "Congregação Nova Paraguaçu",
+        group: {
+          id: selectedGroupId,
+          numero: selectedGroup.numero,
+          superintendenteNome: selectedGroup.superintendenteNome,
+        },
+        rows: selectedRows,
+        status: statuses[selectedGroupId] || "rascunho",
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Falha ao gerar Excel do grupo. Veja o console para detalhes.");
+    }
   }
 
-  async function handleDeleteTestMonth() {
+  async function onDeleteTestMonth() {
+    if (!monthId) return;
     const ok = window.confirm(
-      `Excluir TODOS os lançamentos de teste de ${monthId} em todos os grupos?\n\nIsso apaga o relatório do mês e os publicadores (não mexe no cadastro de membros).`
+      `Tem certeza que deseja excluir os lançamentos de teste de ${monthId}?\n\nIsso remove groups/*/reports/${monthId} e a subcoleção publicadores.`
     );
     if (!ok) return;
 
-    for (const g of groups) {
-      const pubsCol = collection(
-        db,
-        "groups",
-        g.id,
-        "reports",
-        monthId,
-        "publicadores"
-      );
-      const pubsSnap = await getDocs(pubsCol);
-
-      let batch = writeBatch(db);
-      let ops = 0;
-
-      pubsSnap.docs.forEach((d) => {
-        batch.delete(d.ref);
-        ops += 1;
-        if (ops >= 450) {
-          // eslint-disable-next-line no-void
-          void batch.commit();
-          batch = writeBatch(db);
-          ops = 0;
-        }
-      });
-
-      batch.delete(doc(db, "groups", g.id, "reports", monthId));
-      await batch.commit();
+    try {
+      // Deleta publicadores e o doc do mês de cada grupo.
+      for (const g of groups) {
+        const pubs = await getDocs(
+          collection(db, "groups", g.id, "reports", monthId, "publicadores")
+        );
+        const batch = writeBatch(db);
+        pubs.docs.forEach((d) => batch.delete(d.ref));
+        batch.delete(doc(db, "groups", g.id, "reports", monthId));
+        await batch.commit();
+      }
+      alert("Mês de teste excluído.");
+    } catch (e) {
+      console.error(e);
+      alert("Falha ao excluir mês de teste. Veja o console para detalhes.");
     }
   }
 
@@ -176,23 +211,28 @@ export default function AdminDashboard() {
           <h2>Painel do Administrador</h2>
           <div className="muted">Acompanhe os 7 grupos e o resumo do mês.</div>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <MonthPicker value={monthId} onChange={setMonthId} />
-          <button onClick={handleExportMonthPdf}>Baixar PDF (mês)</button>
-          <button onClick={handleExportMonthExcel}>Baixar Excel (mês)</button>
-          <button disabled={!selectedGroupId} onClick={handleExportGroupPdf}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontWeight: 600 }}>Mês:</span>
+            <MonthPicker value={monthId} onChange={setMonthId} />
+          </div>
+
+          <button type="button" onClick={onExportMonthPdf} disabled={!monthId || groups.length === 0}>
+            Baixar PDF (mês)
+          </button>
+          <button type="button" onClick={onExportMonthExcel} disabled={!monthId || groups.length === 0}>
+            Baixar Excel (mês)
+          </button>
+          <button type="button" onClick={onExportGroupPdf} disabled={!monthId || !selectedGroupId}>
             PDF do grupo
           </button>
-          <button disabled={!selectedGroupId} onClick={handleExportGroupExcel}>
+          <button type="button" onClick={onExportGroupExcel} disabled={!monthId || !selectedGroupId}>
             Excel do grupo
           </button>
-          <button
-            onClick={handleDeleteTestMonth}
-            style={{ borderColor: "#e11d48", color: "#e11d48" }}
-          >
+          <button type="button" onClick={onDeleteTestMonth} disabled={!monthId || groups.length === 0} style={{ borderColor: "#f66" }}>
             Excluir mês de teste
           </button>
-          <button onClick={logout}>Sair</button>
+          <button type="button" onClick={logout}>Sair</button>
         </div>
       </div>
 

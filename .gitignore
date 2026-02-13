@@ -27,3 +27,13 @@ dist-ssr
 .env.*
 !.env.example
 
+
+# backups / copies
+src/export/backup/
+* - Copia.js
+src/pages/recurso/
+
+
+# arquivos temporários
+src/pages/*[0-9][0-9].jsx
+

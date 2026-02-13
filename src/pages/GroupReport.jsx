@@ -42,25 +42,16 @@ export default function GroupReport({ onGoMembers }) {
     const reportRef = doc(db, "groups", groupId, "reports", monthId);
 
     (async () => {
-      // IMPORTANTE: não sobrescrever um mês já preenchido/enviado.
-      // Criamos o doc do mês apenas se ele NÃO existir.
-      const reportSnap = await getDoc(reportRef);
-      if (!reportSnap.exists()) {
-        await setDoc(reportRef, {
+      await setDoc(
+        reportRef,
+        {
           mes: monthId,
           status: "rascunho",
-          criadoEm: serverTimestamp(),
-          criadoPor: user.uid,
           atualizadoEm: serverTimestamp(),
           atualizadoPor: user.uid,
-        });
-      } else {
-        // só atualiza o "atualizadoEm" sem mexer no status
-        await updateDoc(reportRef, {
-          atualizadoEm: serverTimestamp(),
-          atualizadoPor: user.uid,
-        });
-      }
+        },
+        { merge: true }
+      );
 
       const membersSnap = await getDocs(collection(db, "groups", groupId, "members"));
       const members = membersSnap.docs
@@ -78,11 +69,9 @@ export default function GroupReport({ onGoMembers }) {
           m.id
         );
 
-        // NÃO usar merge com defaults aqui, pois isso sobrescreve valores já lançados.
-        // Regra: se não existe, cria com defaults; se existe, só garante o nome.
-        const pubSnap = await getDoc(pubRef);
-        if (!pubSnap.exists()) {
-          await setDoc(pubRef, {
+        await setDoc(
+          pubRef,
+          {
             nome: m.nome,
             participou: false,
             pioneiroAuxiliar: false,
@@ -90,13 +79,9 @@ export default function GroupReport({ onGoMembers }) {
             estudosBiblicos: 0,
             horasPA: 0,
             horasPR: 0,
-          });
-        } else {
-          const oldNome = pubSnap.data()?.nome;
-          if (oldNome !== m.nome) {
-            await updateDoc(pubRef, { nome: m.nome });
-          }
-        }
+          },
+          { merge: true }
+        );
       }
     })();
   }, [groupId, monthId, user?.uid]);
@@ -122,6 +107,33 @@ export default function GroupReport({ onGoMembers }) {
   }, [groupId, monthId]);
 
   const summary = useMemo(() => calcSummary(rows), [rows]);
+
+  const groupLabel = useMemo(() => {
+    const numero = group?.numero ?? "";
+    const sup = group?.superintendenteNome ?? "";
+    return `Grupo ${numero}${sup ? " - " + sup : ""}`.trim();
+  }, [group]);
+
+  async function onExportPdf() {
+    await exportGroupMonthToPdf({
+      groupLabel,
+      monthId,
+      rows,
+      summary,
+      status: reportStatus,
+      congregacao: "Congregação Nova Paraguaçu",
+    });
+  }
+
+  function onExportExcel() {
+    exportGroupMonthToExcel({
+      groupLabel,
+      monthId,
+      rows,
+      summary,
+      congregacao: "Congregação Nova Paraguaçu",
+    });
+  }
 
   async function onAdd(nome) {
     const pubsCol = collection(db, "groups", groupId, "reports", monthId, "publicadores");
@@ -181,8 +193,10 @@ export default function GroupReport({ onGoMembers }) {
           )}
         </div>
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <MonthPicker value={monthId} onChange={setMonthId} />
+          <button onClick={onExportPdf} disabled={rows.length === 0}>Baixar PDF</button>
+          <button onClick={onExportExcel} disabled={rows.length === 0}>Baixar Excel</button>
           <button onClick={onGoMembers}>Cadastro</button>
           <button onClick={logout}>Sair</button>
         </div>

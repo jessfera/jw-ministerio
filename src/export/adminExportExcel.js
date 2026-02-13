@@ -1,11 +1,23 @@
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 
+function getCongregationName(fallback = "Congregação Nova Paraguaçu") {
+  return (
+    (typeof import.meta !== "undefined" &&
+      import.meta.env &&
+      (import.meta.env.VITE_CONGREGACAO_NOME || import.meta.env.VITE_CONGREGACAO)) ||
+    fallback
+  );
+}
+
 export function exportAdminMonthToExcel({ monthId, groups, allRowsByGroup, totals }) {
   const wb = XLSX.utils.book_new();
 
+  const congregacao = getCongregationName();
+
   // Aba Total (resumo geral)
   const totalSheet = XLSX.utils.json_to_sheet([
+    { Indicador: "Congregação", Valor: congregacao },
     { Indicador: "Mês", Valor: monthId },
     { Indicador: "Total Horas PA", Valor: totals.totalHorasPA || 0 },
     { Indicador: "Total Horas PR", Valor: totals.totalHorasPR || 0 },
@@ -33,6 +45,13 @@ export function exportAdminMonthToExcel({ monthId, groups, allRowsByGroup, total
       }));
 
     const ws = XLSX.utils.json_to_sheet(dataRows);
+
+    // Cabeçalho no topo da aba (fica acima da tabela)
+    XLSX.utils.sheet_add_aoa(
+      ws,
+      [[congregacao], [`Grupo ${g.numero ?? ""} — ${g.superintendenteNome ?? ""}`], [`Mês: ${monthId}`], []],
+      { origin: "A1" }
+    );
 
     // Nome seguro da aba (máx 31 chars no Excel)
     const sheetName = `G${String(g.numero || g.id).replace(/\D/g, "") || g.id}`.slice(0, 31);

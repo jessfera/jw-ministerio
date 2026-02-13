@@ -1,7 +1,18 @@
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 
+function getCongregationName(fallback = "Congregação Nova Paraguaçu") {
+  return (
+    (typeof import.meta !== "undefined" &&
+      import.meta.env &&
+      (import.meta.env.VITE_CONGREGACAO_NOME || import.meta.env.VITE_CONGREGACAO)) ||
+    fallback
+  );
+}
+
 export function exportGroupMonthToExcel({ groupLabel, monthId, rows, summary }) {
+  const congregationName = getCongregationName();
+
   const dataRows = (rows || []).map((r) => ({
     "Componente do grupo": r.nome || "",
     "Participou no ministério": r.participou ? "Sim" : "Não",
@@ -13,6 +24,11 @@ export function exportGroupMonthToExcel({ groupLabel, monthId, rows, summary }) 
   }));
 
   const ws1 = XLSX.utils.json_to_sheet(dataRows);
+  XLSX.utils.sheet_add_aoa(
+    ws1,
+    [[congregationName], [`Grupo: ${groupLabel}`], [`Mês: ${monthId}`], []],
+    { origin: "A1" }
+  );
 
   const resumoRows = [
     { Indicador: "Total Horas PA", Valor: Number(summary?.totalHorasPA || 0) },
@@ -22,6 +38,9 @@ export function exportGroupMonthToExcel({ groupLabel, monthId, rows, summary }) 
     { Indicador: "Qtd Pioneiros Regulares", Valor: Number(summary?.qtdPR || 0) },
   ];
   const ws2 = XLSX.utils.json_to_sheet(resumoRows);
+  XLSX.utils.sheet_add_aoa(ws2, [[congregationName], [`Grupo: ${groupLabel}`], [`Mês: ${monthId}`], []], {
+    origin: "A1",
+  });
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws1, "Relatorio");
