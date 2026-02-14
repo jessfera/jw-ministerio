@@ -17,8 +17,8 @@ import { monthIdFromDate } from "../lib/month";
 import { exportAdminMonthToExcel } from "../lib/adminExportExcel";
 import { exportAdminMonthToPdf } from "../lib/adminExportPdf";
 // Exportações (Grupo)
-import { exportGroupMonthToPdf } from "../lib/exportPdf";
-import { exportGroupMonthToExcel } from "../lib/exportExcel";
+import { exportGroupMonthToPdf } from "../export/exportPdf";
+import { exportGroupMonthToExcel } from "../export/exportExcel";
 
 export default function AdminDashboard() {
   const { logout } = useAuth();
