@@ -22,15 +22,17 @@ function getLogoUrl(fallback = "/logo.png") {
 async function loadImageToDataUrl(src) {
   try {
     if (!src || typeof window === "undefined") return null;
-    const abs = src.startsWith("/")
-      ? new URL(src, window.location.origin).toString()
-      : src;
-    const res = await fetch(abs, { cache: "no-cache" });
+
+    // garante URL absoluta (evita bug com paths relativos)
+    const url = new URL(src, window.location.origin).toString();
+
+    const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) return null;
+
     const blob = await res.blob();
     return await new Promise((resolve) => {
       const reader = new FileReader();
-      reader.onloadend = () => resolve(String(reader.result || ""));
+      reader.onloadend = () => resolve(reader.result);
       reader.onerror = () => resolve(null);
       reader.readAsDataURL(blob);
     });
