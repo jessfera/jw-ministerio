@@ -28,6 +28,7 @@ export default function ReportTable({
             style={{ flex: 1 }}
           />
           <button
+            type="button"
             onClick={() => {
               const nome = newName.trim();
               if (!nome) return;
@@ -54,84 +55,123 @@ export default function ReportTable({
               {!readOnly && <th>Ações</th>}
             </tr>
           </thead>
+
           <tbody>
             {sorted.map((r) => (
               <tr key={r.id}>
                 <td>{r.nome}</td>
+
                 <td>
                   <input
                     type="checkbox"
                     checked={!!r.participou}
                     disabled={readOnly}
-                    onChange={(e) => onUpdate(r.id, { participou: e.target.checked })}
+                    onChange={(e) =>
+                      onUpdate(r.id, { participou: e.target.checked })
+                    }
                   />
                 </td>
+
                 <td>
                   <input
                     type="checkbox"
                     checked={!!r.pioneiroAuxiliar}
-                    disabled={readOnly || !r.pioneiroAuxiliar}
+                    disabled={readOnly}
                     onChange={(e) => {
                       const checked = e.target.checked;
-                      // Regra: P. Aux e P. Reg não podem ficar marcados ao mesmo tempo.
-                      // Se marcar P. Aux, desmarca P. Reg (e zera horas PR pra evitar inconsistência).
-                      onUpdate(r.id, checked
-                        ? { pioneiroAuxiliar: true, pioneiroRegular: false, horasPR: 0 }
-                        : { pioneiroAuxiliar: false }
+                      // Regra: PA e PR não podem ficar marcados ao mesmo tempo.
+                      // Se marcar PA: desmarca PR e zera horasPR
+                      // Se desmarcar PA: zera horasPA (opcional, mas consistente)
+                      onUpdate(
+                        r.id,
+                        checked
+                          ? {
+                              pioneiroAuxiliar: true,
+                              pioneiroRegular: false,
+                              horasPR: 0,
+                            }
+                          : { pioneiroAuxiliar: false, horasPA: 0 }
                       );
                     }}
                   />
                 </td>
+
                 <td>
                   <input
                     type="checkbox"
                     checked={!!r.pioneiroRegular}
-                    disabled={readOnly || !r.pioneiroRegular}	
+                    disabled={readOnly}
                     onChange={(e) => {
                       const checked = e.target.checked;
-                      // Regra: P. Aux e P. Reg não podem ficar marcados ao mesmo tempo.
-                      // Se marcar P. Reg, desmarca P. Aux (e zera horas PA pra evitar inconsistência).
-                      onUpdate(r.id, checked
-                        ? { pioneiroRegular: true, pioneiroAuxiliar: false, horasPA: 0 }
-                        : { pioneiroRegular: false }
+                      // Regra: PA e PR não podem ficar marcados ao mesmo tempo.
+                      // Se marcar PR: desmarca PA e zera horasPA
+                      // Se desmarcar PR: zera horasPR (opcional, mas consistente)
+                      onUpdate(
+                        r.id,
+                        checked
+                          ? {
+                              pioneiroRegular: true,
+                              pioneiroAuxiliar: false,
+                              horasPA: 0,
+                            }
+                          : { pioneiroRegular: false, horasPR: 0 }
                       );
                     }}
                   />
                 </td>
+
                 <td>
                   <input
                     type="number"
                     value={r.estudosBiblicos ?? 0}
                     disabled={readOnly}
-                    onChange={(e) => onUpdate(r.id, { estudosBiblicos: numInput(e.target.value) })}
+                    onChange={(e) =>
+                      onUpdate(r.id, {
+                        estudosBiblicos: numInput(e.target.value),
+                      })
+                    }
                     style={{ width: 90 }}
                     min={0}
                   />
+                </td>
+
                 <td>
-  		  <input
-    		    type="number"
-    		    value={r.horasPA ?? 0}
-    		    disabled={readOnly || !r.pioneiroAuxiliar}
-    		    onChange={(e) => onUpdate(r.id, { horasPA: numInput(e.target.value) })}
-    		    style={{ width: 90 }}
-    		    min={0}
-    		    step="0.5"
-  		  />
-		</td>
+                  <input
+                    type="number"
+                    value={r.horasPA ?? 0}
+                    // ✅ PA habilita / PR desabilita automaticamente
+                    disabled={readOnly || !r.pioneiroAuxiliar}
+                    onChange={(e) =>
+                      onUpdate(r.id, { horasPA: numInput(e.target.value) })
+                    }
+                    style={{ width: 90 }}
+                    min={0}
+                    step="0.5"
+                  />
+                </td>
+
                 <td>
-  		  <input
-    		    type="number"
-   		    value={r.horasPR ?? 0}
- 		    disabled={readOnly || !r.pioneiroRegular}
-		    onChange={(e) => onUpdate(r.id, { horasPR: numInput(e.target.value) })}
-		    style={{ width: 90 }}
-		    min={0}
-		    step="0.5"
- 		   />
-		</td>
+                  <input
+                    type="number"
+                    value={r.horasPR ?? 0}
+                    // ✅ PR habilita / PA desabilita automaticamente
+                    disabled={readOnly || !r.pioneiroRegular}
+                    onChange={(e) =>
+                      onUpdate(r.id, { horasPR: numInput(e.target.value) })
+                    }
+                    style={{ width: 90 }}
+                    min={0}
+                    step="0.5"
+                  />
+                </td>
+
                 {!readOnly && (
                   <td>
-                    <button className="danger" onClick={() => onRemove(r.id)}>
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={() => onRemove(r.id)}
+                    >
                       Remover
                     </button>
                   </td>
