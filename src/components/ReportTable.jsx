@@ -70,7 +70,7 @@ export default function ReportTable({
                   <input
                     type="checkbox"
                     checked={!!r.pioneiroAuxiliar}
-                    disabled={readOnly}
+                    disabled={readOnly || !r.pioneiroAuxiliar}
                     onChange={(e) => {
                       const checked = e.target.checked;
                       // Regra: P. Aux e P. Reg não podem ficar marcados ao mesmo tempo.
@@ -86,7 +86,7 @@ export default function ReportTable({
                   <input
                     type="checkbox"
                     checked={!!r.pioneiroRegular}
-                    disabled={readOnly}
+                    disabled={readOnly || !r.pioneiroRegular}	
                     onChange={(e) => {
                       const checked = e.target.checked;
                       // Regra: P. Aux e P. Reg não podem ficar marcados ao mesmo tempo.
@@ -107,29 +107,28 @@ export default function ReportTable({
                     style={{ width: 90 }}
                     min={0}
                   />
-                </td>
                 <td>
-                  <input
-                    type="number"
-                    value={r.horasPA ?? 0}
-                    disabled={readOnly}
-                    onChange={(e) => onUpdate(r.id, { horasPA: numInput(e.target.value) })}
-                    style={{ width: 90 }}
-                    min={0}
-                    step="0.5"
-                  />
-                </td>
+  		  <input
+    		    type="number"
+    		    value={r.horasPA ?? 0}
+    		    disabled={readOnly || !r.pioneiroAuxiliar}
+    		    onChange={(e) => onUpdate(r.id, { horasPA: numInput(e.target.value) })}
+    		    style={{ width: 90 }}
+    		    min={0}
+    		    step="0.5"
+  		  />
+		</td>
                 <td>
-                  <input
-                    type="number"
-                    value={r.horasPR ?? 0}
-                    disabled={readOnly}
-                    onChange={(e) => onUpdate(r.id, { horasPR: numInput(e.target.value) })}
-                    style={{ width: 90 }}
-                    min={0}
-                    step="0.5"
-                  />
-                </td>
+  		  <input
+    		    type="number"
+   		    value={r.horasPR ?? 0}
+ 		    disabled={readOnly || !r.pioneiroRegular}
+		    onChange={(e) => onUpdate(r.id, { horasPR: numInput(e.target.value) })}
+		    style={{ width: 90 }}
+		    min={0}
+		    step="0.5"
+ 		   />
+		</td>
                 {!readOnly && (
                   <td>
                     <button className="danger" onClick={() => onRemove(r.id)}>
