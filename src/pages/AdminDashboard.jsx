@@ -7,11 +7,11 @@ import SummaryCard from "../components/SummaryCard";
 import { calcSummary } from "../lib/summary";
 import { monthIdFromDate } from "../lib/month";
 
-// Exportações (Admin) - GARANTA que estes arquivos existem em src/export/
+// Admin exports (src/export)
 import { exportAdminMonthToExcel } from "../export/adminExportExcel";
 import { exportAdminMonthToPdf } from "../export/adminExportPdf";
 
-// Exportações (Grupo) - GARANTA que estes arquivos existem em src/export/
+// Grupo exports (src/export)
 import { exportGroupMonthToPdf } from "../export/exportPdf";
 import { exportGroupMonthToExcel } from "../export/exportExcel";
 
@@ -22,21 +22,23 @@ export default function AdminDashboard() {
   const [groups, setGroups] = useState([]);
   const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [selectedRows, setSelectedRows] = useState([]);
-  const [statuses, setStatuses] = useState({}); // groupId -> status
+  const [statuses, setStatuses] = useState({});
   const [globalSummary, setGlobalSummary] = useState(null);
 
-  // Ajuste aqui se quiser fixo, ou depois você pode mover pra env
   const congregationName = "Congregação Nova Paraguaçu";
   const logoUrl =
-    typeof window !== "undefined" ? new URL("/logo.png", window.location.origin).href : "/logo.png";
+    typeof window !== "undefined"
+      ? new URL("/logo.png", window.location.origin).toString()
+      : "/logo.png";
 
-  // Carrega lista de grupos
+  // carrega grupos
   useEffect(() => {
     const run = async () => {
       const snap = await getDocs(collection(db, "groups"));
       const data = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (a.numero ?? 0) - (b.numero ?? 0));
+
       setGroups(data);
       if (!selectedGroupId && data[0]) setSelectedGroupId(data[0].id);
     };
@@ -44,7 +46,7 @@ export default function AdminDashboard() {
     // eslint-disable-next-line
   }, []);
 
-  // Escuta status por grupo (doc do mês)
+  // escuta status do mês por grupo
   useEffect(() => {
     if (groups.length === 0 || !monthId) return;
 
@@ -61,19 +63,11 @@ export default function AdminDashboard() {
     return () => unsubs.forEach((u) => u());
   }, [groups, monthId]);
 
-  // Escuta publicadores do grupo selecionado
+  // escuta publicadores do grupo selecionado
   useEffect(() => {
     if (!selectedGroupId || !monthId) return;
 
-    const pubsCol = collection(
-      db,
-      "groups",
-      selectedGroupId,
-      "reports",
-      monthId,
-      "publicadores"
-    );
-
+    const pubsCol = collection(db, "groups", selectedGroupId, "reports", monthId, "publicadores");
     const unsub = onSnapshot(pubsCol, (qs) => {
       setSelectedRows(qs.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
@@ -88,16 +82,14 @@ export default function AdminDashboard() {
 
   const selectedSummary = useMemo(() => calcSummary(selectedRows), [selectedRows]);
 
-  // Resumo global (soma todos grupos)
+  // resumo global
   useEffect(() => {
     if (groups.length === 0 || !monthId) return;
 
     const run = async () => {
       let all = [];
       for (const g of groups) {
-        const snap = await getDocs(
-          collection(db, "groups", g.id, "reports", monthId, "publicadores")
-        );
+        const snap = await getDocs(collection(db, "groups", g.id, "reports", monthId, "publicadores"));
         all = all.concat(snap.docs.map((d) => d.data()));
       }
       setGlobalSummary(calcSummary(all));
@@ -109,9 +101,7 @@ export default function AdminDashboard() {
   async function fetchAllRowsByGroup() {
     const out = {};
     for (const g of groups) {
-      const snap = await getDocs(
-        collection(db, "groups", g.id, "reports", monthId, "publicadores")
-      );
+      const snap = await getDocs(collection(db, "groups", g.id, "reports", monthId, "publicadores"));
       out[g.id] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     }
     return out;
@@ -200,9 +190,7 @@ export default function AdminDashboard() {
 
     try {
       for (const g of groups) {
-        const pubs = await getDocs(
-          collection(db, "groups", g.id, "reports", monthId, "publicadores")
-        );
+        const pubs = await getDocs(collection(db, "groups", g.id, "reports", monthId, "publicadores"));
         const batch = writeBatch(db);
         pubs.docs.forEach((d) => batch.delete(d.ref));
         batch.delete(doc(db, "groups", g.id, "reports", monthId));
@@ -223,15 +211,7 @@ export default function AdminDashboard() {
           <div className="muted">Acompanhe os 7 grupos e o resumo do mês.</div>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-            flexWrap: "wrap",
-            justifyContent: "flex-end",
-          }}
-        >
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontWeight: 600 }}>Mês:</span>
             <MonthPicker value={monthId} onChange={setMonthId} />
@@ -244,19 +224,10 @@ export default function AdminDashboard() {
             Baixar Excel (mês)
           </button>
 
-          {/* AQUI era o bug: chamava onExportGroupPdf/onExportGroupExcel que NÃO EXISTEM */}
-          <button
-            type="button"
-            onClick={onExportSelectedGroupPdf}
-            disabled={!monthId || !selectedGroupId}
-          >
+          <button type="button" onClick={onExportSelectedGroupPdf} disabled={!monthId || !selectedGroupId}>
             PDF do grupo
           </button>
-          <button
-            type="button"
-            onClick={onExportSelectedGroupExcel}
-            disabled={!monthId || !selectedGroupId}
-          >
+          <button type="button" onClick={onExportSelectedGroupExcel} disabled={!monthId || !selectedGroupId}>
             Excel do grupo
           </button>
 
@@ -269,9 +240,7 @@ export default function AdminDashboard() {
             Excluir mês de teste
           </button>
 
-          <button type="button" onClick={logout}>
-            Sair
-          </button>
+          <button type="button" onClick={logout}>Sair</button>
         </div>
       </div>
 
@@ -310,16 +279,9 @@ export default function AdminDashboard() {
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Nome</th>
-                    <th>Participou</th>
-                    <th>P. Aux</th>
-                    <th>P. Reg</th>
-                    <th>Estudos</th>
-                    <th>Horas PA</th>
-                    <th>Horas PR</th>
+                    <th>Nome</th><th>Participou</th><th>P. Aux</th><th>P. Reg</th><th>Estudos</th><th>Horas PA</th><th>Horas PR</th>
                   </tr>
                 </thead>
-
                 <tbody>
                   {selectedRows.map((r) => (
                     <tr key={r.id}>
@@ -332,13 +294,8 @@ export default function AdminDashboard() {
                       <td>{r.horasPR ?? 0}</td>
                     </tr>
                   ))}
-
                   {selectedRows.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="muted">
-                        Sem lançamentos neste mês.
-                      </td>
-                    </tr>
+                    <tr><td colSpan={7} className="muted">Sem lançamentos neste mês.</td></tr>
                   )}
                 </tbody>
               </table>
