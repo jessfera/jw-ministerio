@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   doc,
   getDoc,
@@ -10,6 +10,7 @@ import {
   deleteDoc,
   serverTimestamp,
   getDocs,
+  writeBatch,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../auth/AuthProvider";
@@ -18,6 +19,10 @@ import ReportTable from "../components/ReportTable";
 import SummaryCard from "../components/SummaryCard";
 import { calcSummary } from "../lib/summary";
 import { monthIdFromDate } from "../lib/month";
+
+// ✅ imports corretos dos exports
+import { exportGroupMonthToPdf } from "../export/exportPdf";
+import { exportGroupMonthToExcel } from "../export/exportExcel";
 
 export default function GroupReport({ onGoMembers }) {
   const { profile, logout, user } = useAuth();
@@ -28,6 +33,15 @@ export default function GroupReport({ onGoMembers }) {
   const [rows, setRows] = useState([]);
   const [reportStatus, setReportStatus] = useState("rascunho");
 
+  const congregationName = "Congregação Nova Paraguaçu";
+  const logoUrl =
+    typeof window !== "undefined"
+      ? new URL("/logo.png", window.location.origin).href
+      : "/logo.png";
+
+  // evita rodar init duplicado (React strict mode / re-render / login)
+  const initKeyRef = useRef("");
+
   useEffect(() => {
     if (!groupId) return;
     (async () => {
@@ -36,42 +50,54 @@ export default function GroupReport({ onGoMembers }) {
     })();
   }, [groupId]);
 
+  // ✅ INIT DO MÊS SEM ZERAR:
+  // - cria doc do mês somente se não existir
+  // - cria publicadores somente se não existir (por memberId)
+  // - se já existir, só garante "nome" (não sobrescreve horas/checkbox)
   useEffect(() => {
     if (!groupId || !monthId || !user?.uid) return;
 
+    const key = `${groupId}__${monthId}__${user.uid}`;
+    if (initKeyRef.current === key) return;
+    initKeyRef.current = key;
+
     const reportRef = doc(db, "groups", groupId, "reports", monthId);
+    const pubsCol = collection(db, "groups", groupId, "reports", monthId, "publicadores");
 
     (async () => {
-      await setDoc(
-        reportRef,
-        {
+      // 1) cria doc do mês somente se não existir
+      const reportSnap = await getDoc(reportRef);
+      if (!reportSnap.exists()) {
+        await setDoc(reportRef, {
           mes: monthId,
           status: "rascunho",
+          criadoEm: serverTimestamp(),
+          criadoPor: user.uid,
           atualizadoEm: serverTimestamp(),
           atualizadoPor: user.uid,
-        },
-        { merge: true }
-      );
+        });
+      }
 
+      // 2) pega members ativos
       const membersSnap = await getDocs(collection(db, "groups", groupId, "members"));
       const members = membersSnap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((m) => m.ativo !== false);
 
-      for (const m of members) {
-        const pubRef = doc(
-          db,
-          "groups",
-          groupId,
-          "reports",
-          monthId,
-          "publicadores",
-          m.id
-        );
+      // 3) lista publicadores existentes (pra não sobrescrever)
+      const pubsSnap = await getDocs(pubsCol);
+      const existingIds = new Set(pubsSnap.docs.map((d) => d.id));
 
-        await setDoc(
-          pubRef,
-          {
+      // 4) cria apenas os faltantes (batched)
+      const batch = writeBatch(db);
+      let hasWrites = false;
+
+      for (const m of members) {
+        const pubRef = doc(db, "groups", groupId, "reports", monthId, "publicadores", m.id);
+
+        if (!existingIds.has(m.id)) {
+          // cria do zero (não existe)
+          batch.set(pubRef, {
             nome: m.nome,
             participou: false,
             pioneiroAuxiliar: false,
@@ -79,9 +105,22 @@ export default function GroupReport({ onGoMembers }) {
             estudosBiblicos: 0,
             horasPA: 0,
             horasPR: 0,
-          },
+          });
+          hasWrites = true;
+        } else {
+          // já existe: só garante o nome (sem mexer em horas/checkbox)
+          batch.set(pubRef, { nome: m.nome }, { merge: true });
+          hasWrites = true;
+        }
+      }
+
+      if (hasWrites) {
+        batch.set(
+          reportRef,
+          { atualizadoEm: serverTimestamp(), atualizadoPor: user.uid },
           { merge: true }
         );
+        await batch.commit();
       }
     })();
   }, [groupId, monthId, user?.uid]);
@@ -92,6 +131,7 @@ export default function GroupReport({ onGoMembers }) {
     const reportRef = doc(db, "groups", groupId, "reports", monthId);
     const unsubReport = onSnapshot(reportRef, (snap) => {
       if (snap.exists()) setReportStatus(snap.data().status || "rascunho");
+      else setReportStatus("rascunho");
     });
 
     const pubsCol = collection(db, "groups", groupId, "reports", monthId, "publicadores");
@@ -115,24 +155,40 @@ export default function GroupReport({ onGoMembers }) {
   }, [group]);
 
   async function onExportPdf() {
-    await exportGroupMonthToPdf({
-      groupLabel,
-      monthId,
-      rows,
-      summary,
-      status: reportStatus,
-      congregacao: "Congregação Nova Paraguaçu",
-    });
+    try {
+      await exportGroupMonthToPdf({
+        monthId,
+        congregationName,
+        logoUrl,
+        group: {
+          numero: group?.numero ?? "",
+          superintendenteNome: group?.superintendenteNome ?? "",
+        },
+        rows,
+        totals: summary, // ✅ aqui é totals
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Falha ao gerar PDF. Veja o console.");
+    }
   }
 
-  function onExportExcel() {
-    exportGroupMonthToExcel({
-      groupLabel,
-      monthId,
-      rows,
-      summary,
-      congregacao: "Congregação Nova Paraguaçu",
-    });
+  async function onExportExcel() {
+    try {
+      await exportGroupMonthToExcel({
+        monthId,
+        congregationName,
+        group: {
+          numero: group?.numero ?? "",
+          superintendenteNome: group?.superintendenteNome ?? "",
+        },
+        rows,
+        totals: summary,
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Falha ao gerar Excel. Veja o console.");
+    }
   }
 
   async function onAdd(nome) {
@@ -145,6 +201,11 @@ export default function GroupReport({ onGoMembers }) {
       estudosBiblicos: 0,
       horasPA: 0,
       horasPR: 0,
+    });
+
+    await updateDoc(doc(db, "groups", groupId, "reports", monthId), {
+      atualizadoEm: serverTimestamp(),
+      atualizadoPor: user?.uid || null,
     });
   }
 
@@ -160,6 +221,10 @@ export default function GroupReport({ onGoMembers }) {
   async function onRemove(id) {
     const ref = doc(db, "groups", groupId, "reports", monthId, "publicadores", id);
     await deleteDoc(ref);
+    await updateDoc(doc(db, "groups", groupId, "reports", monthId), {
+      atualizadoEm: serverTimestamp(),
+      atualizadoPor: user?.uid || null,
+    });
   }
 
   async function enviarMes() {
